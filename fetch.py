@@ -1,6 +1,7 @@
 import requests
 import gspread
 from google.oauth2.service_account import Credentials
+import os
 
 SPORTMONKS_TOKEN = "YOUR_TOKEN_HERE"
 
@@ -47,7 +48,16 @@ def update_sheet(rows):
             continue
 
 def run():
-    data = fetch_data()
-    update_sheet(data)
+    try:
+        print("Starting fetch...")
+        data = fetch_data()
+        print("Fetched:", len(data))
+
+        update_sheet(data)
+        print("Sheet updated successfully")
+
+    except Exception as e:
+        print("ERROR:", str(e))
+        raise
 
 run()
