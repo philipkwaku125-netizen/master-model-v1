@@ -59,5 +59,5 @@ def run():
     except Exception as e:
         print("ERROR:", str(e))
         raise
-
+print("TOKEN:", SPORTMONKS_TOKEN)
 run() 
