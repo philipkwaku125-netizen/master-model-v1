@@ -1,9 +1,9 @@
 import requests
 import gspread
-from google.oauth2.service_account import Credentials
 import os
+from google.oauth2.service_account import Credentials
 
-SPORTMONKS_TOKEN = "YOUR_TOKEN_HERE"
+SPORTMONKS_TOKEN = os.getenv("SPORTMONKS_TOKEN")
 
 URL = f"https://api.sportmonks.com/v3/football/fixtures?api_token={SPORTMONKS_TOKEN}&from=2022-01-01&to=2026-12-31"
 
@@ -24,14 +24,14 @@ def connect_sheet():
     )
 
     client = gspread.authorize(creds)
-    sheet = client.open("master-model-v1").worksheet("API_MATCHES")
+    sheet = client.open("MASTER MODEL v1").worksheet("API_MATCHES")
     return sheet
 
 def update_sheet(rows):
     sheet = connect_sheet()
     sheet.clear()
 
-    headers = ["MatchID","League","DateTime","HomeTeam","AwayTeam","Status"]
+    headers = ["MatchID", "League", "DateTime", "HomeTeam", "AwayTeam", "Status"]
     sheet.append_row(headers)
 
     for r in rows:
@@ -60,4 +60,4 @@ def run():
         print("ERROR:", str(e))
         raise
 
-run()
+run() 
