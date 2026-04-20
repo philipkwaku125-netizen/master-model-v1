@@ -2,12 +2,13 @@ name: Daily Football Pipeline
 
 on:
   schedule:
-    - cron: "0 3 * * *"  # Runs daily at 03:00 UTC
-  workflow_dispatch:     # This lets you run it manually to test
+    - cron: "0 3 * * *"
+  workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,8 +22,9 @@ jobs:
         run: |
           pip install gspread oauth2client requests pandas
 
-      - name: Decode Google Credentials
-        run: echo "${{ secrets.GCP_SA_KEY }}" | base64 -d > credentials.json
+      - name: Create credentials file
+        run: |
+          echo "${{ secrets.GOOGLE_CREDENTIALS }}" > credentials.json
 
       - name: Run Bot Script
         run: python fetch.py
