@@ -6,7 +6,7 @@ import joblib
 from sklearn.linear_model import LogisticRegression
 
 # =========================
-# 1. LOAD FROM GOOGLE SHEET
+# 1. LOAD DATA FROM SHEET
 # =========================
 def load_data():
     scope = [
@@ -21,15 +21,13 @@ def load_data():
 
     client = gspread.authorize(creds)
 
-    # ✅ FIXED SHEET NAME (YOUR REAL NAME)
-    sheet = client.open("MASTER MODEL v1 - Football Prediction Engine").worksheet("API_MATCHES")
+    sheet = client.open(
+        "MASTER MODEL v1 - Football Prediction Engine"
+    ).worksheet("API_MATCHES")
 
-    data = sheet.get_all_records()
+    data = pd.DataFrame(sheet.get_all_records())
+    return data
 
-    if not data:
-        raise ValueError("Google Sheet is empty")
-
-    return pd.DataFrame(data)
 
 df = load_data()
 
@@ -38,54 +36,74 @@ df = load_data()
 # =========================
 df = df.fillna(0)
 
-for col in ['HomeGoals', 'AwayGoals']:
-    if col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+# ensure numeric goals
+df["HomeGoals"] = pd.to_numeric(df["HomeGoals"], errors="coerce").fillna(0)
+df["AwayGoals"] = pd.to_numeric(df["AwayGoals"], errors="coerce").fillna(0)
 
 # =========================
-# 3. RESULT LABEL
+# 3. CREATE REAL LABELS
 # =========================
-def get_result(row):
-    if row.get("HomeGoals", 0) > row.get("AwayGoals", 0):
-        return "H"
-    elif row.get("HomeGoals", 0) < row.get("AwayGoals", 0):
-        return "A"
+def result(row):
+    if row["HomeGoals"] > row["AwayGoals"]:
+        return 2   # Home Win
+    elif row["HomeGoals"] < row["AwayGoals"]:
+        return 0   # Away Win
     else:
-        return "D"
+        return 1   # Draw
 
-df["result"] = df.apply(get_result, axis=1)
+df["target"] = df.apply(result, axis=1)
 
 # =========================
-# 4. BASIC FEATURES (TEMP)
+# 4. VALIDATION (FIX "1 CLASS" ERROR)
 # =========================
-df["home_strength"] = 1
-df["away_strength"] = 1
-df["strength_diff"] = 0
-df["elo_diff"] = 0
-df["home_xg"] = 1
-df["away_xg"] = 1
+print("CLASS DISTRIBUTION:")
+print(df["target"].value_counts())
 
+if df["target"].nunique() < 2:
+    raise ValueError("❌ Not enough classes. Fix goals data first.")
+
+# =========================
+# 5. FEATURE ENGINEERING (REAL NOT FAKE)
+# =========================
+
+# Basic goal-based features
+df["goal_diff"] = df["HomeGoals"] - df["AwayGoals"]
+
+# Rolling form (important upgrade vs your old system)
+df["home_form"] = df.groupby("HomeTeam")["HomeGoals"].transform(
+    lambda x: x.rolling(5, min_periods=1).mean()
+)
+
+df["away_form"] = df.groupby("AwayTeam")["AwayGoals"].transform(
+    lambda x: x.rolling(5, min_periods=1).mean()
+)
+
+df["form_diff"] = df["home_form"] - df["away_form"]
+
+# =========================
+# 6. FINAL FEATURES
+# =========================
 features = [
-    "home_strength",
-    "away_strength",
-    "strength_diff",
-    "elo_diff",
-    "home_xg",
-    "away_xg"
+    "HomeGoals",
+    "AwayGoals",
+    "goal_diff",
+    "home_form",
+    "away_form",
+    "form_diff"
 ]
 
-X = df[features]
-y = df["result"]
+X = df[features].fillna(0)
+y = df["target"]
 
 # =========================
-# 5. TRAIN MODEL
+# 7. TRAIN MODEL
 # =========================
 model = LogisticRegression(max_iter=1000)
 model.fit(X, y)
 
 # =========================
-# 6. SAVE MODEL
+# 8. SAVE MODEL
 # =========================
 joblib.dump(model, "model.pkl")
 
-print("MODEL TRAINED SUCCESSFULLY FROM GOOGLE SHEET") 
+print("✅ MODEL TRAINED SUCCESSFULLY") 
