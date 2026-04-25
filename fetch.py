@@ -8,26 +8,42 @@ from google.oauth2.service_account import Credentials
 # =========================
 SPORTMONKS_TOKEN = os.getenv("SPORTMONKS_TOKEN")
 
-# ✅ MUST include scores + participants
-URL = f"https://api.sportmonks.com/v3/football/fixtures?api_token={SPORTMONKS_TOKEN}&include=scores,participants&from=2022-01-01&to=2026-12-31"
+BASE_URL = "https://api.sportmonks.com/v3/football/fixtures"
+
+URL = f"{BASE_URL}?api_token={SPORTMONKS_TOKEN}&include=scores,participants&filters=dates:2022-01-01,2026-12-31"
 
 
 # =========================
-# 2. FETCH DATA
+# 2. FETCH DATA (DEBUG SAFE)
 # =========================
 def fetch_data():
     res = requests.get(URL)
 
+    print("STATUS:", res.status_code)
+
     if res.status_code != 200:
-        print("API ERROR:", res.text)
+        print("API ERROR RESPONSE:")
+        print(res.text[:500])
         return []
 
-    data = res.json()
-    return data.get("data", [])
+    try:
+        data = res.json()
+    except Exception as e:
+        print("JSON ERROR:", e)
+        print(res.text[:500])
+        return []
+
+    # 🔥 SAFETY: SportMonks sometimes returns different structure
+    if "data" in data:
+        return data["data"]
+
+    print("NO 'data' KEY FOUND. FULL RESPONSE SAMPLE:")
+    print(str(data)[:500])
+    return []
 
 
 # =========================
-# 3. GOOGLE SHEET CONNECT
+# 3. SHEET CONNECTION
 # =========================
 def connect_sheet():
     scope = [
@@ -69,14 +85,14 @@ def update_sheet(rows):
             away = participants[1]["name"] if len(participants) > 1 else "Unknown"
 
             # =========================
-            # SAFE GOALS EXTRACTION
+            # GOALS EXTRACTION (SAFE)
             # =========================
             home_goals = 0
             away_goals = 0
 
-            scores = r.get("scores", [])
+            scores = r.get("scores")
 
-            if scores and len(scores) >= 2:
+            if isinstance(scores, list) and len(scores) >= 2:
                 try:
                     home_goals = scores[0]["score"]["goals"]
                     away_goals = scores[1]["score"]["goals"]
@@ -95,7 +111,7 @@ def update_sheet(rows):
             ])
 
         except Exception as e:
-            print(f"Skipping row: {e}")
+            print("Skipping row:", e)
             continue
 
 
@@ -106,10 +122,11 @@ def run():
     print("Starting fetch...")
 
     data = fetch_data()
-    print(f"Fetched: {len(data)} matches")
 
-    if not data:
-        print("No data found.")
+    print("Fetched matches:", len(data))
+
+    if len(data) == 0:
+        print("❌ NO DATA RETURNED — CHECK API PLAN OR FILTERS")
         return
 
     update_sheet(data)
@@ -118,4 +135,4 @@ def run():
 
 
 if __name__ == "__main__":
-    run() 
+    run()
