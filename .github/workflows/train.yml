@@ -24,11 +24,10 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pandas numpy scikit-learn gspread google-auth joblib requests
-          pip install -r requirements.txt
 
-      - name: Add credentials file
+      - name: Create credentials file
         run: |
-          echo "${{ secrets.GOOGLE_CREDS }}" > credentials.json
+          printf '%s' "${{ secrets.GOOGLE_CREDENTIALS }}" > credentials.json
 
       - name: Run training
         run: |
@@ -40,4 +39,4 @@ jobs:
           git config --global user.email "actions@github.com"
           git add .
           git commit -m "auto retrain model" || echo "no changes"
-          git push
+          git push 
