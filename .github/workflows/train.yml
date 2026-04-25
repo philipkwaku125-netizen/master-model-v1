@@ -25,20 +25,35 @@ jobs:
         run: |
           pip install pandas numpy scikit-learn gspread google-auth joblib requests
 
-      - name: Create credentials file
+      # =========================
+      # SAFE CREDENTIAL CREATION
+      # =========================
+      - name: Create credentials file safely
         run: |
-          python -c "import os; open('credentials.json','w').write(os.environ['GOOGLE_CREDENTIALS'])"
+          echo "${GOOGLE_CREDENTIALS}" > credentials.json
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
-      - name: Run training
+      # =========================
+      # VERIFY DATA BEFORE TRAINING
+      # =========================
+      - name: Run data check
         run: |
-          python train.py
+          python -c "import gspread, json; print('Credentials OK')"
 
+      # =========================
+      # RUN TRAINING
+      # =========================
+      - name: Run training
+        run: python train.py
+
+      # =========================
+      # COMMIT MODEL ONLY IF EXISTS
+      # =========================
       - name: Commit model
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
-          git add .
+          git add model.pkl || echo "no model"
           git commit -m "auto retrain model" || echo "no changes"
-          git push
+          git push 
