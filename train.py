@@ -20,9 +20,15 @@ def load_data():
     )
 
     client = gspread.authorize(creds)
-    sheet = client.open("MASTER MODEL v1").worksheet("API_MATCHES")
+
+    # ✅ FIXED SHEET NAME (YOUR REAL NAME)
+    sheet = client.open("MASTER MODEL v1 - Football Prediction Engine").worksheet("API_MATCHES")
 
     data = sheet.get_all_records()
+
+    if not data:
+        raise ValueError("Google Sheet is empty")
+
     return pd.DataFrame(data)
 
 df = load_data()
@@ -32,13 +38,12 @@ df = load_data()
 # =========================
 df = df.fillna(0)
 
-# Convert goals if they exist later (safe)
-for col in ['HomeGoals','AwayGoals']:
+for col in ['HomeGoals', 'AwayGoals']:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
 # =========================
-# 3. SIMPLE RESULT LABEL (TEMP MODEL BASE)
+# 3. RESULT LABEL
 # =========================
 def get_result(row):
     if row.get("HomeGoals", 0) > row.get("AwayGoals", 0):
@@ -48,13 +53,10 @@ def get_result(row):
     else:
         return "D"
 
-if "HomeGoals" in df.columns:
-    df["result"] = df.apply(get_result, axis=1)
-else:
-    df["result"] = "D"  # fallback until full stats exist
+df["result"] = df.apply(get_result, axis=1)
 
 # =========================
-# 4. BASIC FEATURES (SAFE START)
+# 4. BASIC FEATURES (TEMP)
 # =========================
 df["home_strength"] = 1
 df["away_strength"] = 1
@@ -86,4 +88,4 @@ model.fit(X, y)
 # =========================
 joblib.dump(model, "model.pkl")
 
-print("MODEL TRAINED FROM GOOGLE SHEET")
+print("MODEL TRAINED SUCCESSFULLY FROM GOOGLE SHEET") 
