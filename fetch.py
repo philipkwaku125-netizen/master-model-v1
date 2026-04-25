@@ -14,7 +14,7 @@ URL = f"{BASE_URL}?api_token={SPORTMONKS_TOKEN}&include=scores,participants&filt
 
 
 # =========================
-# 2. FETCH DATA (DEBUG SAFE)
+# 2. FETCH DATA
 # =========================
 def fetch_data():
     res = requests.get(URL)
@@ -22,28 +22,20 @@ def fetch_data():
     print("STATUS:", res.status_code)
 
     if res.status_code != 200:
-        print("API ERROR RESPONSE:")
-        print(res.text[:500])
+        print(res.text[:300])
         return []
 
     try:
         data = res.json()
     except Exception as e:
         print("JSON ERROR:", e)
-        print(res.text[:500])
         return []
 
-    # 🔥 SAFETY: SportMonks sometimes returns different structure
-    if "data" in data:
-        return data["data"]
-
-    print("NO 'data' KEY FOUND. FULL RESPONSE SAMPLE:")
-    print(str(data)[:500])
-    return []
+    return data.get("data", [])
 
 
 # =========================
-# 3. SHEET CONNECTION
+# 3. CONNECT SHEET
 # =========================
 def connect_sheet():
     scope = [
@@ -58,12 +50,34 @@ def connect_sheet():
 
     client = gspread.authorize(creds)
 
-    sheet = client.open("MASTER MODEL v1 - Football Prediction Engine").worksheet("API_MATCHES")
-    return sheet
+    return client.open(
+        "MASTER MODEL v1 - Football Prediction Engine"
+    ).worksheet("API_MATCHES")
 
 
 # =========================
-# 4. UPDATE SHEET
+# 4. SAFE GOAL EXTRACTION
+# =========================
+def extract_goals(r):
+    home_goals = 0
+    away_goals = 0
+
+    try:
+        scores = r.get("scores", [])
+
+        for s in scores:
+            if s.get("description") == "CURRENT":
+                home_goals = s.get("score", {}).get("goals", 0)
+                away_goals = s.get("score", {}).get("opponent_goals", 0)
+                break
+    except:
+        pass
+
+    return home_goals, away_goals
+
+
+# =========================
+# 5. UPDATE SHEET (BATCH VERSION)
 # =========================
 def update_sheet(rows):
     sheet = connect_sheet()
@@ -75,7 +89,7 @@ def update_sheet(rows):
         "HomeGoals", "AwayGoals"
     ]
 
-    sheet.append_row(headers)
+    all_rows = [headers]
 
     for r in rows:
         try:
@@ -84,22 +98,9 @@ def update_sheet(rows):
             home = participants[0]["name"] if len(participants) > 0 else "Unknown"
             away = participants[1]["name"] if len(participants) > 1 else "Unknown"
 
-            # =========================
-            # GOALS EXTRACTION (SAFE)
-            # =========================
-            home_goals = 0
-            away_goals = 0
+            home_goals, away_goals = extract_goals(r)
 
-            scores = r.get("scores")
-
-            if isinstance(scores, list) and len(scores) >= 2:
-                try:
-                    home_goals = scores[0]["score"]["goals"]
-                    away_goals = scores[1]["score"]["goals"]
-                except:
-                    pass
-
-            sheet.append_row([
+            all_rows.append([
                 r.get("id"),
                 r.get("league_id"),
                 r.get("starting_at"),
@@ -111,28 +112,31 @@ def update_sheet(rows):
             ])
 
         except Exception as e:
-            print("Skipping row:", e)
+            print("Skipping:", e)
             continue
+
+    # 🚀 single write (FAST + STABLE)
+    sheet.update(all_rows)
 
 
 # =========================
-# 5. RUN PIPELINE
+# 6. RUN PIPELINE
 # =========================
 def run():
     print("Starting fetch...")
 
     data = fetch_data()
 
-    print("Fetched matches:", len(data))
+    print("Fetched:", len(data))
 
-    if len(data) == 0:
-        print("❌ NO DATA RETURNED — CHECK API PLAN OR FILTERS")
+    if not data:
+        print("NO DATA RETURNED")
         return
 
     update_sheet(data)
 
-    print("Sheet updated successfully!")
+    print("DONE: Sheet updated successfully!")
 
 
 if __name__ == "__main__":
-    run()
+    run() 
