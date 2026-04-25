@@ -2,7 +2,7 @@ name: Auto Train Model
 
 on:
   schedule:
-    - cron: "0 3 * * *"   # runs daily at 3AM UTC
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
 jobs:
@@ -18,8 +18,12 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Upgrade pip
+        run: pip install --upgrade pip
+
       - name: Install dependencies
         run: |
+          pip install pandas numpy scikit-learn gspread google-auth joblib requests
           pip install -r requirements.txt
 
       - name: Add credentials file
