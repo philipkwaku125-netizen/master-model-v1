@@ -32,16 +32,29 @@ def load_data():
 df = load_data()
 
 # =========================
-# 2. CLEAN DATA
+# 2. CLEAN + FIX COLUMN NAMES
 # =========================
 df = df.fillna(0)
+
+# 🔥 FIX: align sheet columns with model
+df = df.rename(columns={
+    "home_goals": "HomeGoals",
+    "away_goals": "AwayGoals",
+    "home_team": "HomeTeam",
+    "away_team": "AwayTeam"
+})
+
+# 🔒 SAFETY: ensure columns exist
+for col in ["HomeGoals", "AwayGoals", "HomeTeam", "AwayTeam"]:
+    if col not in df.columns:
+        df[col] = 0
 
 # ensure numeric goals
 df["HomeGoals"] = pd.to_numeric(df["HomeGoals"], errors="coerce").fillna(0)
 df["AwayGoals"] = pd.to_numeric(df["AwayGoals"], errors="coerce").fillna(0)
 
 # =========================
-# 3. CREATE REAL LABELS
+# 3. CREATE LABELS
 # =========================
 def result(row):
     if row["HomeGoals"] > row["AwayGoals"]:
@@ -54,7 +67,7 @@ def result(row):
 df["target"] = df.apply(result, axis=1)
 
 # =========================
-# 4. VALIDATION (FIX "1 CLASS" ERROR)
+# 4. VALIDATION
 # =========================
 print("CLASS DISTRIBUTION:")
 print(df["target"].value_counts())
@@ -63,47 +76,10 @@ if df["target"].nunique() < 2:
     raise ValueError("❌ Not enough classes. Fix goals data first.")
 
 # =========================
-# 5. FEATURE ENGINEERING (REAL NOT FAKE)
+# 5. FEATURE ENGINEERING
 # =========================
 
-# Basic goal-based features
 df["goal_diff"] = df["HomeGoals"] - df["AwayGoals"]
 
-# Rolling form (important upgrade vs your old system)
 df["home_form"] = df.groupby("HomeTeam")["HomeGoals"].transform(
-    lambda x: x.rolling(5, min_periods=1).mean()
-)
-
-df["away_form"] = df.groupby("AwayTeam")["AwayGoals"].transform(
-    lambda x: x.rolling(5, min_periods=1).mean()
-)
-
-df["form_diff"] = df["home_form"] - df["away_form"]
-
-# =========================
-# 6. FINAL FEATURES
-# =========================
-features = [
-    "HomeGoals",
-    "AwayGoals",
-    "goal_diff",
-    "home_form",
-    "away_form",
-    "form_diff"
-]
-
-X = df[features].fillna(0)
-y = df["target"]
-
-# =========================
-# 7. TRAIN MODEL
-# =========================
-model = LogisticRegression(max_iter=1000)
-model.fit(X, y)
-
-# =========================
-# 8. SAVE MODEL
-# =========================
-joblib.dump(model, "model.pkl")
-
-print("✅ MODEL TRAINED SUCCESSFULLY") 
+    lambda
