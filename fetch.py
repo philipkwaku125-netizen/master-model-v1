@@ -56,18 +56,26 @@ def connect_sheet():
 
 
 # =========================
-# 4. EXTRACT GOALS
+# 4. FIXED GOAL EXTRACTION (IMPORTANT)
 # =========================
 def extract_goals(r):
     scores = r.get("scores", [])
 
     for s in scores:
-        if s.get("description") == "CURRENT":
-            home = s.get("score", {}).get("goals")
-            away = s.get("score", {}).get("opponent_goals")
+        desc = str(s.get("description", "")).upper()
+
+        # accept all valid finished match types
+        if desc in ["FT", "FINAL", "FULLTIME", "CURRENT"]:
+            score = s.get("score", {})
+
+            home = score.get("goals")
+            away = score.get("opponent_goals")
 
             if home is not None and away is not None:
-                return home, away
+                try:
+                    return int(home), int(away)
+                except:
+                    return None, None
 
     return None, None
 
@@ -96,7 +104,7 @@ def update_sheet(rows):
 
             home_goals, away_goals = extract_goals(r)
 
-            # skip if no real result
+            # skip invalid matches (THIS IS CRITICAL)
             if home_goals is None or away_goals is None:
                 continue
 
@@ -118,14 +126,14 @@ def update_sheet(rows):
     print("VALID MATCHES:", len(clean_rows) - 1)
 
     if len(clean_rows) <= 1:
-        print("❌ No valid matches")
+        print("❌ No valid matches found")
         return
 
     sheet.update(clean_rows)
 
 
 # =========================
-# 6. RUN
+# 6. RUN PIPELINE
 # =========================
 def run():
     print("Starting fetch...")
@@ -135,7 +143,7 @@ def run():
     print("Fetched:", len(data))
 
     if not data:
-        print("NO DATA")
+        print("NO DATA RETURNED")
         return
 
     update_sheet(data)
@@ -144,4 +152,4 @@ def run():
 
 
 if __name__ == "__main__":
-    run() 
+    run()
