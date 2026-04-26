@@ -10,8 +10,8 @@ SPORTMONKS_TOKEN = os.getenv("SPORTMONKS_TOKEN")
 
 BASE_URL = "https://api.sportmonks.com/v3/football/fixtures"
 
-# ✅ FIXED: correct query (NO broken filters)
-URL = f"{BASE_URL}?api_token={SPORTMONKS_TOKEN}&include=scores,participants&per_page=100"
+# ✅ FIX: remove broken date filters + force only finished matches
+URL = f"{BASE_URL}?api_token={SPORTMONKS_TOKEN}&include=scores,participants&per_page=100&filters=fixture:finished"
 
 
 # =========================
@@ -57,36 +57,42 @@ def connect_sheet():
 
 
 # =========================
-# 4. GOAL EXTRACTION (SAFE)
+# 4. SAFE GOALS EXTRACTION
 # =========================
 def extract_goals(r):
     try:
-        scores = r.get("scores", [])
+        participants = r.get("participants", [])
 
-        for s in scores:
-            desc = str(s.get("description", "")).upper()
+        if len(participants) < 2:
+            return None, None
 
-            if desc in ["FT", "FINAL", "FULLTIME", "CURRENT"]:
-                score = s.get("score", {})
+        home = participants[0]
+        away = participants[1]
 
-                home = score.get("goals")
-                away = score.get("opponent_goals")
+        home_goals = (
+            home.get("meta", {}).get("goals")
+            or home.get("result", {}).get("goals")
+        )
 
-                if home is not None and away is not None:
-                    return int(home), int(away)
+        away_goals = (
+            away.get("meta", {}).get("goals")
+            or away.get("result", {}).get("goals")
+        )
 
-        return None, None
+        if home_goals is None or away_goals is None:
+            return None, None
+
+        return int(home_goals), int(away_goals)
 
     except:
         return None, None
 
 
 # =========================
-# 5. UPDATE SHEET
+# 5. UPDATE SHEET (FULL RESET FIX)
 # =========================
 def update_sheet(rows):
     sheet = connect_sheet()
-    sheet.clear()
 
     headers = [
         "match_id", "league_id", "datetime",
@@ -129,7 +135,9 @@ def update_sheet(rows):
         print("❌ No valid matches found")
         return
 
-    sheet.update(clean_rows)
+    # 🔥 FULL RESET (IMPORTANT FIX)
+    sheet.batch_clear(["A:Z"])
+    sheet.update(clean_rows, value_input_option="RAW")
 
 
 # =========================
@@ -143,7 +151,7 @@ def run():
     print("Fetched:", len(data))
 
     if not data:
-        print("NO DATA")
+        print("NO DATA RETURNED")
         return
 
     update_sheet(data)
@@ -152,4 +160,4 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    run() 
