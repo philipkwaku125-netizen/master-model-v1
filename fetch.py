@@ -56,13 +56,92 @@ def connect_sheet():
 
 
 # =========================
-# 4. EXTRACT REAL SCORES
+# 4. EXTRACT GOALS
 # =========================
 def extract_goals(r):
-    try:
-        scores = r.get("scores", [])
+    scores = r.get("scores", [])
 
-        for s in scores:
-            if s.get("description") == "CURRENT":
-                home = s.get("score", {}).get("goals", None)
-                away
+    for s in scores:
+        if s.get("description") == "CURRENT":
+            home = s.get("score", {}).get("goals")
+            away = s.get("score", {}).get("opponent_goals")
+
+            if home is not None and away is not None:
+                return home, away
+
+    return None, None
+
+
+# =========================
+# 5. UPDATE SHEET
+# =========================
+def update_sheet(rows):
+    sheet = connect_sheet()
+    sheet.clear()
+
+    headers = [
+        "match_id", "league_id", "datetime",
+        "home_team", "away_team", "status",
+        "home_goals", "away_goals"
+    ]
+
+    clean_rows = [headers]
+
+    for r in rows:
+        try:
+            participants = r.get("participants", [])
+
+            home = participants[0]["name"] if len(participants) > 0 else "Unknown"
+            away = participants[1]["name"] if len(participants) > 1 else "Unknown"
+
+            home_goals, away_goals = extract_goals(r)
+
+            # skip if no real result
+            if home_goals is None or away_goals is None:
+                continue
+
+            clean_rows.append([
+                r.get("id"),
+                r.get("league_id"),
+                r.get("starting_at"),
+                home,
+                away,
+                r.get("state_id"),
+                home_goals,
+                away_goals
+            ])
+
+        except Exception as e:
+            print("Skipping row:", e)
+            continue
+
+    print("VALID MATCHES:", len(clean_rows) - 1)
+
+    if len(clean_rows) <= 1:
+        print("❌ No valid matches")
+        return
+
+    sheet.update(clean_rows)
+
+
+# =========================
+# 6. RUN
+# =========================
+def run():
+    print("Starting fetch...")
+
+    data = fetch_data()
+
+    print("Fetched:", len(data))
+
+    if not data:
+        print("NO DATA")
+        return
+
+    update_sheet(data)
+
+    print("✅ Sheet updated successfully")
+
+
+if __name__ == "__main__":
+    run() 
