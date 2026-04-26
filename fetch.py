@@ -56,28 +56,38 @@ def connect_sheet():
 
 
 # =========================
-# 4. FIXED GOAL EXTRACTION (IMPORTANT)
+# 4. FIXED GOAL EXTRACTION (REAL STRUCTURE)
 # =========================
 def extract_goals(r):
-    scores = r.get("scores", [])
+    try:
+        participants = r.get("participants", [])
 
-    for s in scores:
-        desc = str(s.get("description", "")).upper()
+        if len(participants) < 2:
+            return None, None
 
-        # accept all valid finished match types
-        if desc in ["FT", "FINAL", "FULLTIME", "CURRENT"]:
-            score = s.get("score", {})
+        home = participants[0]
+        away = participants[1]
 
-            home = score.get("goals")
-            away = score.get("opponent_goals")
+        # SportMonks v3 usually stores goals here
+        home_goals = None
+        away_goals = None
 
-            if home is not None and away is not None:
-                try:
-                    return int(home), int(away)
-                except:
-                    return None, None
+        if "meta" in home and "meta" in away:
+            home_goals = home["meta"].get("goals")
+            away_goals = away["meta"].get("goals")
 
-    return None, None
+        # fallback: sometimes inside relation
+        if home_goals is None or away_goals is None:
+            home_goals = home.get("result", {}).get("goals")
+            away_goals = away.get("result", {}).get("goals")
+
+        if home_goals is None or away_goals is None:
+            return None, None
+
+        return int(home_goals), int(away_goals)
+
+    except:
+        return None, None
 
 
 # =========================
@@ -99,12 +109,12 @@ def update_sheet(rows):
         try:
             participants = r.get("participants", [])
 
-            home = participants[0]["name"] if len(participants) > 0 else "Unknown"
-            away = participants[1]["name"] if len(participants) > 1 else "Unknown"
+            home_team = participants[0]["name"] if len(participants) > 0 else "Unknown"
+            away_team = participants[1]["name"] if len(participants) > 1 else "Unknown"
 
             home_goals, away_goals = extract_goals(r)
 
-            # skip invalid matches (THIS IS CRITICAL)
+            # IMPORTANT: skip invalid matches
             if home_goals is None or away_goals is None:
                 continue
 
@@ -112,8 +122,8 @@ def update_sheet(rows):
                 r.get("id"),
                 r.get("league_id"),
                 r.get("starting_at"),
-                home,
-                away,
+                home_team,
+                away_team,
                 r.get("state_id"),
                 home_goals,
                 away_goals
@@ -152,4 +162,4 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    run() 
