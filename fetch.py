@@ -10,7 +10,8 @@ SPORTMONKS_TOKEN = os.getenv("SPORTMONKS_TOKEN")
 
 BASE_URL = "https://api.sportmonks.com/v3/football/fixtures"
 
-URL = f"{BASE_URL}?api_token={SPORTMONKS_TOKEN}&include=scores,participants&filters=dates:2022-01-01,2026-12-31"
+# ✅ FIXED: correct query (NO broken filters)
+URL = f"{BASE_URL}?api_token={SPORTMONKS_TOKEN}&include=scores,participants&per_page=100"
 
 
 # =========================
@@ -35,7 +36,7 @@ def fetch_data():
 
 
 # =========================
-# 3. CONNECT SHEET
+# 3. SHEET CONNECTION
 # =========================
 def connect_sheet():
     scope = [
@@ -56,35 +57,25 @@ def connect_sheet():
 
 
 # =========================
-# 4. FIXED GOAL EXTRACTION (REAL STRUCTURE)
+# 4. GOAL EXTRACTION (SAFE)
 # =========================
 def extract_goals(r):
     try:
-        participants = r.get("participants", [])
+        scores = r.get("scores", [])
 
-        if len(participants) < 2:
-            return None, None
+        for s in scores:
+            desc = str(s.get("description", "")).upper()
 
-        home = participants[0]
-        away = participants[1]
+            if desc in ["FT", "FINAL", "FULLTIME", "CURRENT"]:
+                score = s.get("score", {})
 
-        # SportMonks v3 usually stores goals here
-        home_goals = None
-        away_goals = None
+                home = score.get("goals")
+                away = score.get("opponent_goals")
 
-        if "meta" in home and "meta" in away:
-            home_goals = home["meta"].get("goals")
-            away_goals = away["meta"].get("goals")
+                if home is not None and away is not None:
+                    return int(home), int(away)
 
-        # fallback: sometimes inside relation
-        if home_goals is None or away_goals is None:
-            home_goals = home.get("result", {}).get("goals")
-            away_goals = away.get("result", {}).get("goals")
-
-        if home_goals is None or away_goals is None:
-            return None, None
-
-        return int(home_goals), int(away_goals)
+        return None, None
 
     except:
         return None, None
@@ -109,12 +100,11 @@ def update_sheet(rows):
         try:
             participants = r.get("participants", [])
 
-            home_team = participants[0]["name"] if len(participants) > 0 else "Unknown"
-            away_team = participants[1]["name"] if len(participants) > 1 else "Unknown"
+            home = participants[0]["name"] if len(participants) > 0 else "Unknown"
+            away = participants[1]["name"] if len(participants) > 1 else "Unknown"
 
             home_goals, away_goals = extract_goals(r)
 
-            # IMPORTANT: skip invalid matches
             if home_goals is None or away_goals is None:
                 continue
 
@@ -122,8 +112,8 @@ def update_sheet(rows):
                 r.get("id"),
                 r.get("league_id"),
                 r.get("starting_at"),
-                home_team,
-                away_team,
+                home,
+                away,
                 r.get("state_id"),
                 home_goals,
                 away_goals
@@ -143,7 +133,7 @@ def update_sheet(rows):
 
 
 # =========================
-# 6. RUN PIPELINE
+# 6. RUN
 # =========================
 def run():
     print("Starting fetch...")
@@ -153,7 +143,7 @@ def run():
     print("Fetched:", len(data))
 
     if not data:
-        print("NO DATA RETURNED")
+        print("NO DATA")
         return
 
     update_sheet(data)
@@ -162,4 +152,4 @@ def run():
 
 
 if __name__ == "__main__":
-    run() 
+    run()
