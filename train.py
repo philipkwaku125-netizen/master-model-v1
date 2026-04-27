@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import gspread
 from google.oauth2.service_account import Credentials
 import joblib
@@ -25,82 +24,88 @@ def load_data():
         "MASTER MODEL v1 - Football Prediction Engine"
     ).worksheet("API_MATCHES")
 
-    return pd.DataFrame(sheet.get_all_records())
+    data = pd.DataFrame(sheet.get_all_records())
+
+    print("ROWS LOADED:", len(data))
+    print("COLUMNS:", data.columns.tolist())
+
+    return data
 
 
 df = load_data()
 
 # =========================
-# 2. CLEAN + FIX COLUMNS
+# 2. NORMALIZE COLUMN NAMES
 # =========================
-df = df.fillna(0)
+df.columns = [c.strip().lower() for c in df.columns]
 
-df = df.rename(columns={
-    "home_goals": "HomeGoals",
-    "away_goals": "AwayGoals",
-    "home_team": "HomeTeam",
-    "away_team": "AwayTeam"
-})
+# map possible variations
+col_map = {
+    "home_goals": "home_goals",
+    "away_goals": "away_goals",
+    "homegoals": "home_goals",
+    "awaygoals": "away_goals"
+}
 
-for col in ["HomeGoals", "AwayGoals", "HomeTeam", "AwayTeam"]:
-    if col not in df.columns:
-        df[col] = 0
-
-df["HomeGoals"] = pd.to_numeric(df["HomeGoals"], errors="coerce").fillna(0)
-df["AwayGoals"] = pd.to_numeric(df["AwayGoals"], errors="coerce").fillna(0)
+df = df.rename(columns=col_map)
 
 # =========================
-# 3. LABELS
+# 3. VALIDATE DATA
 # =========================
-def result(row):
-    if row["HomeGoals"] > row["AwayGoals"]:
+if "home_goals" not in df.columns or "away_goals" not in df.columns:
+    raise ValueError("❌ Goals columns missing from sheet")
+
+df["home_goals"] = pd.to_numeric(df["home_goals"], errors="coerce").fillna(0)
+df["away_goals"] = pd.to_numeric(df["away_goals"], errors="coerce").fillna(0)
+
+print("\nSAMPLE GOALS:")
+print(df[["home_goals", "away_goals"]].head(10))
+
+# =========================
+# 4. CREATE TARGET
+# =========================
+def get_target(row):
+    if row["home_goals"] > row["away_goals"]:
         return 2
-    elif row["HomeGoals"] < row["AwayGoals"]:
+    elif row["home_goals"] < row["away_goals"]:
         return 0
     else:
         return 1
 
-df["target"] = df.apply(result, axis=1)
+df["target"] = df.apply(get_target, axis=1)
 
-print("CLASS DISTRIBUTION:")
+print("\nCLASS DISTRIBUTION:")
 print(df["target"].value_counts())
 
+# =========================
+# 5. HARD STOP IF BAD DATA
+# =========================
 if df["target"].nunique() < 2:
-    raise ValueError("❌ Not enough classes")
+    print("\n❌ DATA PROBLEM DETECTED")
+    print("Your dataset has only ONE outcome (likely all draws).")
+    print("Fix fetch.py — training skipped.")
+
+    # Save empty model to avoid pipeline crash
+    joblib.dump(None, "model.pkl")
+    exit()
 
 # =========================
-# 4. FEATURES
+# 6. FEATURES
 # =========================
-df["goal_diff"] = df["HomeGoals"] - df["AwayGoals"]
+df["goal_diff"] = df["home_goals"] - df["away_goals"]
 
-df["home_form"] = df.groupby("HomeTeam")["HomeGoals"].transform(
-    lambda x: x.rolling(5, min_periods=1).mean()
-)
-
-df["away_form"] = df.groupby("AwayTeam")["AwayGoals"].transform(
-    lambda x: x.rolling(5, min_periods=1).mean()
-)
-
-df["form_diff"] = df["home_form"] - df["away_form"]
-
-# =========================
-# 5. TRAIN
-# =========================
-features = [
-    "HomeGoals",
-    "AwayGoals",
-    "goal_diff",
-    "home_form",
-    "away_form",
-    "form_diff"
-]
-
-X = df[features].fillna(0)
+X = df[["home_goals", "away_goals", "goal_diff"]]
 y = df["target"]
 
+# =========================
+# 7. TRAIN MODEL
+# =========================
 model = LogisticRegression(max_iter=1000)
 model.fit(X, y)
 
+# =========================
+# 8. SAVE MODEL
+# =========================
 joblib.dump(model, "model.pkl")
 
-print("✅ MODEL TRAINED SUCCESSFULLY") 
+print("\n✅ MODEL TRAINED SUCCESSFULLY") 
