@@ -3,17 +3,23 @@ import gspread
 import os
 from google.oauth2.service_account import Credentials
 
+# =========================
+# 1. CONFIG
+# =========================
 SPORTMONKS_TOKEN = os.getenv("SPORTMONKS_TOKEN")
 
 BASE_URL = "https://api.sportmonks.com/v3/football/fixtures"
 
-URL = f"{BASE_URL}?api_token={SPORTMONKS_TOKEN}&include=scores,participants&per_page=20"
+# 🔥 SIMPLE + RELIABLE (no broken filters)
+URL = f"{BASE_URL}?api_token={SPORTMONKS_TOKEN}&include=scores,participants&per_page=100"
 
 
 # =========================
-# FETCH
+# 2. FETCH DATA
 # =========================
 def fetch_data():
+    print("Fetching from API...")
+
     res = requests.get(URL)
 
     print("STATUS:", res.status_code)
@@ -22,15 +28,17 @@ def fetch_data():
         print("API ERROR:", res.text[:300])
         return []
 
-    data = res.json()
-
-    print("RAW KEYS:", data.keys())
+    try:
+        data = res.json()
+    except Exception as e:
+        print("JSON ERROR:", e)
+        return []
 
     return data.get("data", [])
 
 
 # =========================
-# SHEET CONNECT
+# 3. CONNECT GOOGLE SHEET
 # =========================
 def connect_sheet():
     scope = [
@@ -45,84 +53,110 @@ def connect_sheet():
 
     client = gspread.authorize(creds)
 
-    # ⚠️ IMPORTANT: this MUST match your real sheet title exactly
-    sheet = client.open_by_url(os.getenv("SHEET_URL")).worksheet("API_MATCHES")
+    # ⚠️ MUST MATCH EXACT NAME
+    sheet = client.open(
+        "MASTER MODEL v1 - Football Prediction Engine"
+    ).worksheet("API_MATCHES")
 
     return sheet
 
 
 # =========================
-# SIMPLE GOALS (NO FILTERS YET)
+# 4. FINAL GOAL EXTRACTION (STABLE)
 # =========================
 def extract_goals(r):
     try:
         scores = r.get("scores", [])
 
         for s in scores:
-            score = s.get("score", {})
+            desc = str(s.get("description", "")).upper()
 
-            home = score.get("goals")
-            away = score.get("opponent_goals")
+            # ONLY accept finished matches
+            if desc in ["FT", "FINAL", "FULLTIME"]:
+                score = s.get("score", {})
 
-            if home is not None and away is not None:
-                return int(home), int(away)
+                home = score.get("goals")
+                away = score.get("opponent_goals")
+
+                if home is not None and away is not None:
+                    return int(home), int(away)
 
         return None, None
+
     except:
         return None, None
 
 
 # =========================
-# WRITE TO SHEET (DEBUG SAFE)
+# 5. WRITE TO SHEET (FORCED RESET)
 # =========================
 def update_sheet(rows):
     sheet = connect_sheet()
 
-    print("➡ Clearing sheet...")
-    sheet.clear()
+    print("Clearing sheet...")
+    sheet.batch_clear(["A:Z"])
 
-    headers = ["match_id", "home", "away", "hg", "ag"]
+    headers = [
+        "match_id", "league_id", "datetime",
+        "home_team", "away_team", "status",
+        "home_goals", "away_goals"
+    ]
 
-    clean = [headers]
+    clean_rows = [headers]
 
     for r in rows:
-        participants = r.get("participants", [])
+        try:
+            participants = r.get("participants", [])
 
-        home = participants[0]["name"] if len(participants) > 0 else "N/A"
-        away = participants[1]["name"] if len(participants) > 1 else "N/A"
+            home = participants[0]["name"] if len(participants) > 0 else "Unknown"
+            away = participants[1]["name"] if len(participants) > 1 else "Unknown"
 
-        hg, ag = extract_goals(r)
+            home_goals, away_goals = extract_goals(r)
 
-        print("MATCH:", home, away, hg, ag)
+            # 🔥 ONLY KEEP REAL RESULTS
+            if home_goals is None or away_goals is None:
+                continue
 
-        if hg is None or ag is None:
+            clean_rows.append([
+                r.get("id"),
+                r.get("league_id"),
+                r.get("starting_at"),
+                home,
+                away,
+                r.get("state_id"),
+                home_goals,
+                away_goals
+            ])
+
+        except Exception as e:
+            print("Skipping row:", e)
             continue
 
-        clean.append([r.get("id"), home, away, hg, ag])
+    print("VALID MATCHES:", len(clean_rows) - 1)
 
-    print("FINAL ROWS:", len(clean))
+    if len(clean_rows) <= 1:
+        print("❌ No valid matches found — THIS IS YOUR PROBLEM")
+        return
 
-    sheet.update(clean)
+    sheet.update(clean_rows, value_input_option="RAW")
+
+    print("✅ Sheet updated")
 
 
 # =========================
-# RUN
+# 6. RUN PIPELINE
 # =========================
 def run():
-    print("STARTING PIPELINE")
-
     data = fetch_data()
 
-    print("MATCHES RECEIVED:", len(data))
+    print("TOTAL FROM API:", len(data))
 
     if not data:
-        print("NO DATA FROM API")
+        print("❌ API returned nothing")
         return
 
     update_sheet(data)
 
-    print("DONE")
-
 
 if __name__ == "__main__":
-    run() 
+    run()
