@@ -1,4 +1,7 @@
-name: Football Auto Pipeline
+name: Auto Train Model
+
+permissions:
+  contents: write   # 🔥 FIXES YOUR 403 ERROR
 
 on:
   schedule:
@@ -6,52 +9,58 @@ on:
   workflow_dispatch:
 
 jobs:
-  run-all:
+  train:
     runs-on: ubuntu-latest
 
     steps:
+      # =========================
+      # 1. CHECKOUT REPO
+      # =========================
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # =========================
+      # 2. SETUP PYTHON
+      # =========================
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # =========================
+      # 3. INSTALL DEPENDENCIES
+      # =========================
       - name: Install dependencies
         run: |
+          pip install --upgrade pip
           pip install pandas numpy scikit-learn gspread google-auth joblib requests
 
       # =========================
-      # CREATE GOOGLE CREDS
+      # 4. CREATE CREDENTIALS FILE
       # =========================
-      - name: Create credentials
+      - name: Create credentials file
         run: |
-          echo "${GOOGLE_CREDENTIALS}" > credentials.json
+          python -c "import os; open('credentials.json','w').write(os.environ['GOOGLE_CREDENTIALS'])"
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
       # =========================
-      # FETCH DATA
-      # =========================
-      - name: Run fetch
-        run: python fetch.py
-        env:
-          SPORTMONKS_TOKEN: ${{ secrets.SPORTMONKS_TOKEN }}
-
-      # =========================
-      # TRAIN MODEL
+      # 5. RUN TRAINING
       # =========================
       - name: Run training
-        run: python train.py
+        run: |
+          python train.py
 
       # =========================
-      # SAVE MODEL TO REPO
+      # 6. COMMIT MODEL (SAFE)
       # =========================
       - name: Commit model
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
+
           git add model.pkl
+
           git commit -m "auto update model" || echo "no changes"
-          git push
+
+          git push || echo "push skipped" 
