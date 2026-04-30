@@ -16,14 +16,37 @@ async function run() {
   try {
     console.log("🚀 Starting pipeline...");
 
+    // ====== DEBUG ENV ======
+    console.log("🔍 Checking environment variables...");
+
+    if (!API_KEY) {
+      throw new Error("❌ SPORTMONKS_API_KEY is MISSING");
+    }
+
+    console.log("✅ API KEY LENGTH:", API_KEY.length);
+
+    if (!SPREADSHEET_ID) {
+      throw new Error("❌ SPREADSHEET_ID is MISSING");
+    }
+
+    console.log("✅ Spreadsheet ID loaded");
+
+    if (!process.env.GOOGLE_CREDENTIALS) {
+      throw new Error("❌ GOOGLE_CREDENTIALS is MISSING");
+    }
+
+    console.log("✅ Google credentials loaded");
+
     const client = await auth.getClient();
     const sheets = google.sheets({ version: "v4", auth: client });
 
     // ====== 1. FETCH DATA ======
-    console.log("📡 Fetching matches...");
-    const response = await axios.get(
-      `https://api.sportmonks.com/v3/football/fixtures?api_token=${API_KEY}`
-    );
+    console.log("📡 Fetching matches from Sportmonks...");
+
+    const url = `https://api.sportmonks.com/v3/football/fixtures?api_token=${API_KEY}`;
+    console.log("🌐 URL:", url.replace(API_KEY, "HIDDEN"));
+
+    const response = await axios.get(url);
 
     const matches = response.data.data;
 
@@ -52,6 +75,8 @@ async function run() {
       match.scores?.away_score || "",
     ]);
 
+    console.log(`📊 Prepared ${rows.length} rows`);
+
     // ====== 4. WRITE DATA ======
     console.log("✍️ Writing new data...");
     await sheets.spreadsheets.values.update({
@@ -66,9 +91,15 @@ async function run() {
     console.log("🎉 SUCCESS: Sheet updated!");
 
   } catch (error) {
-    console.error("🔥 ERROR:", error.message);
+    console.error("🔥 ERROR MESSAGE:", error.message);
+
+    if (error.response) {
+      console.error("📡 API RESPONSE STATUS:", error.response.status);
+      console.error("📡 API RESPONSE DATA:", error.response.data);
+    }
+
     process.exit(1);
   }
 }
 
-run();
+run(); 
